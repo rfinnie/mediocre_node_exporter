@@ -1,0 +1,345 @@
+#!/usr/bin/env python
+
+# mediocre_node_exporter - A minimal node_exporter reimplementation
+# Copyright (C) 2017 Ryan Finnie
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA.
+
+import sys
+import os
+import BaseHTTPServer
+import socket
+import cStringIO
+import gzip
+
+
+def entry(values, type='gauge', help=None):
+    out = {
+        'values': values,
+        'type': type,
+        'help': help,
+    }
+    return(out)
+
+
+def update_dict(source, to_merge):
+    for (k, v) in to_merge.items():
+        source[k] = v
+
+
+def do_disk():
+    out = {}
+    values_available = []
+    values_files = []
+    values_files_free = []
+    values_free = []
+    values_readonly = []
+    values_size = []
+    mounts = []
+    with open('/proc/mounts') as f:
+        for l in f:
+            mounts.append(l.rstrip().split(' '))
+    for l in mounts:
+        mount = l[1]
+        vfs = os.statvfs(mount)
+        labels = {
+            'device': l[0],
+            'fstype': l[2],
+            'mountpoint': mount,
+        }
+        if l[3].startswith('ro'):
+            readonly = 1
+        else:
+            readonly = 0
+
+        values_available.append((labels, vfs.f_bavail * vfs.f_bsize))
+        values_files.append((labels, vfs.f_files))
+        values_files_free.append((labels, vfs.f_ffree))
+        values_free.append((labels, vfs.f_bfree * vfs.f_bsize))
+        values_readonly.append((labels, readonly))
+        values_size.append((labels, vfs.f_blocks * vfs.f_bsize))
+    out['node_filesystem_available'] = entry(
+        values_available,
+        'gauge',
+        'Filesystem space available to non-root users in bytes.',
+    )
+    out['node_filesystem_files'] = entry(
+        values_files,
+        'gauge',
+        'Filesystem total file nodes.',
+    )
+    out['node_filesystem_files_free'] = entry(
+        values_files_free,
+        'gauge',
+        'Filesystem total free file nodes.',
+    )
+    out['node_filesystem_free'] = entry(
+        values_free,
+        'gauge',
+        'Filesystem free space in bytes.',
+    )
+    out['node_filesystem_readonly'] = entry(
+        values_readonly,
+        'gauge',
+        'Filesystem read-only status.',
+    )
+    out['node_filesystem_size'] = entry(
+        values_size,
+        'gauge',
+        'Filesystem size in bytes.',
+    )
+    return(out)
+
+
+def do_stat():
+    out = {}
+    statdata = {}
+    with open('/proc/stat') as f:
+        for l in f:
+            llist = l.rstrip().split(' ')
+            k = llist.pop(0)
+            statdata[k] = llist
+
+    cpu_modes = ['user', 'nice', 'system', 'idle', 'iowait', 'irq', 'softirq', 'steal', 'guest', 'guest_nice']
+    cpu_values = []
+    for st in statdata:
+        if not st.startswith('cpu'):
+            continue
+        if st == 'cpu':
+            continue
+        for i in range(len(cpu_modes)):
+            try:
+                cpu_values.append(({'cpu': st, 'mode': cpu_modes[i]}, int(statdata[st][i])))
+            except IndexError:
+                continue
+    out['node_cpu'] = entry(
+        cpu_values,
+        'counter',
+        'Seconds the cpus spent in each mode.',
+    )
+    out['node_boot_time'] = entry(
+        [({}, int(statdata['btime'][0]))],
+        'gauge',
+        'Node boot time, in unixtime.',
+    )
+    out['node_intr'] = entry(
+        [({}, int(statdata['intr'][0]))],
+        'counter',
+        'Total number of interrupts serviced.',
+    )
+    out['node_context_switches'] = entry(
+        [({}, int(statdata['ctxt'][0]))],
+        'counter',
+        'Total number of context switches.',
+    )
+    out['node_forks'] = entry(
+        [({}, int(statdata['processes'][0]))],
+        'counter',
+        'Total number of forks.',
+    )
+    out['node_procs_blocked'] = entry(
+        [({}, int(statdata['procs_blocked'][0]))],
+        'gauge',
+        'Number of processes blocked waiting for I/O to complete.',
+    )
+    out['node_procs_running'] = entry(
+        [({}, int(statdata['procs_running'][0]))],
+        'gauge',
+        'Number of processes in runnable state.',
+    )
+    return(out)
+
+
+def do_loadavg():
+    out = {}
+    loadavg = os.getloadavg()
+    out['node_load1'] = entry(
+        [({}, loadavg[0])],
+        'gauge',
+        '1m load average.',
+    )
+    out['node_load5'] = entry(
+        [({}, loadavg[1])],
+        'gauge',
+        '5m load average.',
+    )
+    out['node_load15'] = entry(
+        [({}, loadavg[2])],
+        'gauge',
+        '15m load average.',
+    )
+    return(out)
+
+
+def do_memory():
+    out = {}
+    lines = []
+    with open('/proc/meminfo') as f:
+        for l in f:
+            lines.append(l.rstrip().split(' '))
+    for l in lines:
+        if l[-1] != 'kB':
+            continue
+        k = l[0].replace(':', '').replace('(', '_').replace(')', '')
+        v = int(l[-2]) * 1024
+        out['node_memory_%s' % k] = entry(
+            [({}, v)],
+            'gauge',
+            'Memory information field %s.' % k,
+        )
+    return(out)
+
+
+def do_network():
+    out = {}
+    interfaces = os.listdir('/sys/class/net')
+    statmap = {
+        'receive_bytes': 'rx_bytes',
+        'receive_compressed': 'rx_compressed',
+        'receive_drop': 'rx_dropped',
+        'receive_errs': 'rx_errors',
+        'receive_fifo': 'rx_fifo_errors',
+        'receive_frame': 'rx_frame_errors',
+        'receive_multicast': 'multicast',
+        'receive_packets': 'rx_packets',
+        'transmit_bytes': 'tx_bytes',
+        'transmit_compressed': 'tx_compressed',
+        'transmit_drop': 'tx_dropped',
+        'transmit_errs': 'tx_errors',
+        'transmit_fifo': 'tx_fifo_errors',
+        'transmit_frame': 'tx_frame_errors',
+        'transmit_multicast': None,
+        'transmit_packets': 'tx_packets',
+    }
+
+    for statkey in sorted(statmap):
+        values = []
+        for iface in interfaces:
+            labels = {
+                'device': iface,
+            }
+            if not statmap[statkey]:
+                val = 0
+            elif not os.path.exists('/sys/class/net/%s/statistics/%s' % (iface, statmap[statkey])):
+                val = 0
+            else:
+                with open('/sys/class/net/%s/statistics/%s' % (iface, statmap[statkey])) as f:
+                    val = int(f.read().rstrip())
+            values.append((labels, val))
+        out['node_network_%s' % statkey] = entry(
+            values,
+            'gauge',
+            'Network device statistic %s.' % statkey,
+        )
+    return(out)
+
+
+def parse_args():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='mediocre_node_exporter',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        '--local-port', '-l', type=int, default=9100,
+        help='local port for web server',
+    )
+    parser.add_argument(
+        '--local-addr', type=str, default='::',
+        help='local address for web server',
+    )
+    parser.add_argument(
+        '--dump', action='store_true',
+        help='do not start web server, just dump stats',
+    )
+    return parser.parse_args()
+
+
+def assemble_stats():
+    out = {}
+    output = ''
+    update_dict(out, do_stat())
+    update_dict(out, do_disk())
+    update_dict(out, do_loadavg())
+    update_dict(out, do_memory())
+    update_dict(out, do_network())
+
+    for k in sorted(out):
+        if out[k]['help']:
+            output += '# HELP %s %s\n' % (k, out[k]['help'])
+        output += '# TYPE %s %s\n' % (k, out[k]['type'])
+        for a in out[k]['values']:
+            if a[0]:
+                labeltext = ''
+                for b in sorted(a[0]):
+                    if labeltext:
+                        labeltext += ','
+                    labeltext += '%s="%s"' % (b, a[0][b])
+                output += '%s{%s} %s\n' % (k, labeltext, a[1])
+            else:
+                output += '%s %s\n' % (k, a[1])
+
+    output += '\n'
+    return(output)
+
+
+class HTTPServerV6(BaseHTTPServer.HTTPServer):
+    address_family = socket.AF_INET6
+
+
+class NodeExporterHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    def do_GET(self):
+        do_gzip = False
+        if self.headers.getheader('Accept-Encoding') and ('gzip' in self.headers.getheader('Accept-Encoding')):
+            do_gzip = True
+        output = assemble_stats()
+        if do_gzip:
+            zbuf = cStringIO.StringIO()
+            zfile = gzip.GzipFile(mode='wb', compresslevel=6, fileobj=zbuf)
+            zfile.write(output)
+            zfile.close()
+            compressed_content = zbuf.getvalue()
+
+        self.protocol_version = self.request_version
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain; version=0.0.4')
+        if do_gzip:
+            self.send_header('Content-Encoding', 'gzip')
+            self.send_header('Content-Length', str(len(compressed_content)))
+        else:
+            self.send_header('Content-Length', str(len(output)))
+        self.end_headers()
+        if do_gzip:
+            x = compressed_content
+        else:
+            x = output
+        self.wfile.write(x)
+        self.wfile.close()
+
+
+if __name__ == '__main__':
+    config = parse_args()
+    if config.dump:
+        sys.stdout.write(assemble_stats())
+    else:
+        server_class = HTTPServerV6
+        httpd = server_class(('::', 9100), NodeExporterHandler)
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        httpd.server_close()
