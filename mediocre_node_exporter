@@ -24,6 +24,8 @@ import BaseHTTPServer
 import socket
 import cStringIO
 import gzip
+import time
+import platform
 
 
 def entry(values, type='gauge', help=None):
@@ -40,7 +42,7 @@ def update_dict(source, to_merge):
         source[k] = v
 
 
-def do_disk():
+def collector_filesystem():
     out = {}
     values_available = []
     values_files = []
@@ -71,7 +73,7 @@ def do_disk():
         values_free.append((labels, vfs.f_bfree * vfs.f_bsize))
         values_readonly.append((labels, readonly))
         values_size.append((labels, vfs.f_blocks * vfs.f_bsize))
-    out['node_filesystem_available'] = entry(
+    out['node_filesystem_avail'] = entry(
         values_available,
         'gauge',
         'Filesystem space available to non-root users in bytes.',
@@ -104,7 +106,7 @@ def do_disk():
     return(out)
 
 
-def do_stat():
+def collector_stat():
     out = {}
     statdata = {}
     with open('/proc/stat') as f:
@@ -163,7 +165,7 @@ def do_stat():
     return(out)
 
 
-def do_loadavg():
+def collector_loadavg():
     out = {}
     loadavg = os.getloadavg()
     out['node_load1'] = entry(
@@ -184,7 +186,7 @@ def do_loadavg():
     return(out)
 
 
-def do_memory():
+def collector_meminfo():
     out = {}
     lines = []
     with open('/proc/meminfo') as f:
@@ -203,7 +205,24 @@ def do_memory():
     return(out)
 
 
-def do_network():
+def collector_vmstat():
+    out = {}
+    lines = []
+    with open('/proc/vmstat') as f:
+        for l in f:
+            lines.append(l.rstrip().split(' '))
+    for l in lines:
+        k = l[0]
+        v = int(l[1])
+        out['node_vmstat_%s' % k] = entry(
+            [({}, v)],
+            'untyped',
+            '/proc/vmstat information field %s.' % k,
+        )
+    return(out)
+
+
+def collector_netdev():
     out = {}
     interfaces = os.listdir('/sys/class/net')
     statmap = {
@@ -247,6 +266,84 @@ def do_network():
     return(out)
 
 
+def collector_conntrack():
+    out = {}
+    if os.path.exists('/proc/sys/net/netfilter/nf_conntrack_count'):
+        with open('/proc/sys/net/netfilter/nf_conntrack_count') as f:
+            out['node_nf_conntrack_entries'] = entry(
+                [({}, int(f.read().rstrip()))],
+                'gauge',
+                'Number of currently allocated flow entries for connection tracking.',
+            )
+    if os.path.exists('/proc/sys/net/netfilter/nf_conntrack_max'):
+        with open('/proc/sys/net/netfilter/nf_conntrack_max') as f:
+            out['node_nf_conntrack_entries_limit'] = entry(
+                [({}, int(f.read().rstrip()))],
+                'gauge',
+                'Maximum size of connection tracking table.',
+            )
+    return(out)
+
+
+def collector_time():
+    out = {}
+    out['node_time'] = entry(
+        [({}, int(time.time()))],
+        'gauge',
+        'System time in seconds since epoch (1970).',
+    )
+    return(out)
+
+
+def collector_entropy():
+    out = {}
+    if os.path.exists('/proc/sys/kernel/random/entropy_avail'):
+        with open('/proc/sys/kernel/random/entropy_avail') as f:
+            out['node_entropy_available_bits'] = entry(
+                [({}, int(f.read().rstrip()))],
+                'gauge',
+                'Bits of available entropy.',
+            )
+    return(out)
+
+
+def collector_filefd():
+    out = {}
+    if os.path.exists('/proc/sys/fs/file-nr'):
+        with open('/proc/sys/fs/file-nr') as f:
+            fdlist = f.read().rstrip().split('\t')
+        out['node_filefd_allocated'] = entry(
+            [({}, int(fdlist[0]))],
+            'gauge',
+            'File descriptor statistics: allocated.',
+        )
+        out['node_filefd_maximum'] = entry(
+            [({}, int(fdlist[2]))],
+            'gauge',
+            'File descriptor statistics: maximum.',
+        )
+    return(out)
+
+
+def collector_uname():
+    out = {}
+    uname = platform.uname()
+    labels = {
+        'sysname': uname[0],
+        'nodename': uname[1],
+        'release': uname[2],
+        'version': uname[3],
+        'machine': uname[4],
+        'domainname': '(none)',
+    }
+    out['node_uname_info'] = entry(
+        [(labels, 1)],
+        'gauge',
+        'Labeled system information as provided by the uname system call.',
+    )
+    return(out)
+
+
 def parse_args():
     import argparse
 
@@ -269,14 +366,42 @@ def parse_args():
     return parser.parse_args()
 
 
+def run_collector(collector_name, collector, collector_metrics, times, successes):
+    start_time = time.time()
+    collector_output = collector()
+    end_time = time.time()
+    update_dict(collector_metrics, collector_output)
+    times.append(({'collector': collector_name}, (end_time - start_time)))
+    successes.append(({'collector': collector_name}, 1))  # FIXME
+
+
 def assemble_stats():
+    times = []
+    successes = []
     out = {}
     output = ''
-    update_dict(out, do_stat())
-    update_dict(out, do_disk())
-    update_dict(out, do_loadavg())
-    update_dict(out, do_memory())
-    update_dict(out, do_network())
+    run_collector('conntrack', collector_conntrack, out, times, successes)
+    run_collector('entropy', collector_entropy, out, times, successes)
+    run_collector('filefd', collector_filefd, out, times, successes)
+    run_collector('filesystem', collector_filesystem, out, times, successes)
+    run_collector('loadavg', collector_loadavg, out, times, successes)
+    run_collector('meminfo', collector_meminfo, out, times, successes)
+    run_collector('netdev', collector_netdev, out, times, successes)
+    run_collector('stat', collector_stat, out, times, successes)
+    run_collector('time', collector_time, out, times, successes)
+    run_collector('uname', collector_uname, out, times, successes)
+    run_collector('vmstat', collector_vmstat, out, times, successes)
+
+    out['node_scrape_collector_duration_seconds'] = entry(
+        times,
+        'gauge',
+        'node_exporter: Duration of a collector scrape.',
+    )
+    out['node_scrape_collector_success'] = entry(
+        successes,
+        'gauge',
+        'node_exporter: Whether a collector succeeded.',
+    )
 
     for k in sorted(out):
         if out[k]['help']:
@@ -284,16 +409,16 @@ def assemble_stats():
         output += '# TYPE %s %s\n' % (k, out[k]['type'])
         for a in out[k]['values']:
             if a[0]:
-                labeltext = ''
-                for b in sorted(a[0]):
-                    if labeltext:
-                        labeltext += ','
-                    labeltext += '%s="%s"' % (b, a[0][b])
-                output += '%s{%s} %s\n' % (k, labeltext, a[1])
+                output += '%s{%s} %s\n' % (
+                    k,
+                    ','.join(
+                        ['%s="%s"' % (x, a[0][x]) for x in sorted(a[0].keys())]
+                    ),
+                    a[1]
+                )
             else:
                 output += '%s %s\n' % (k, a[1])
 
-    output += '\n'
     return(output)
 
 
