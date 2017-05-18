@@ -7,7 +7,27 @@ You are welcome to file bugs (or more usefully, patches), but please keep in min
 
 ## Metrics supported
 
-* `/proc/stat`-based metrics
+* conntrack: Netfilter nf_conntrack metrics
+    * node_nf_conntrack_entries
+    * node_nf_conntrack_entries_limit
+* diskstats: `/proc/diskstats`-based metrics
+    * node_disk_*
+* entropy: Kernel entropy metrics
+    * node_entropy_available_bits
+* filefd: File descriptor metrics
+    * node_filefd_allocated
+    * node_filefd_maximum
+* filesystem: Filesystem metrics
+    * node_filesystem_*
+* loadavg: Load average
+    * node_load1
+    * node_load5
+    * node_load15
+* meminfo: `/proc/meminfo`-based metrics
+    * node_memory_*
+* netdev: Network interface metrics
+    * node_network_*
+* stat: `/proc/stat`-based metrics
     * node_boot_time
     * node_context_switches
     * node_cpu
@@ -15,19 +35,9 @@ You are welcome to file bugs (or more usefully, patches), but please keep in min
     * node_intr
     * node_procs_blocked
     * node_procs_running
-* Filesystem metrics
-    * node_filesystem_available
-    * node_filesystem_files
-    * node_filesystem_files_free
-    * node_filesystem_free
-    * node_filesystem_readonly
-    * node_filesystem_size
-* Load average
-    * node_load1
-    * node_load5
-    * node_load15
-* `/proc/meminfo`-based metrics
-    * node_memory_*
-* Network interface metrics
-    * node_network_receive_*
-    * node_network_transmit_*
+* time: Current time
+    * node_time
+* uname: `uname` node information
+    * node_uname_info
+* vmstat: `/proc/vmstat`-based metrics
+    * node_vmstat_*
