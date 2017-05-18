@@ -239,12 +239,18 @@ def collector_meminfo():
     lines = []
     with open('/proc/meminfo') as f:
         for l in f:
-            lines.append(l.rstrip().split(' '))
+            lines.append(re.split('\s+', l.strip()))
     for l in lines:
-        if l[-1] != 'kB':
+        if len(l) == 2:
+            v = int(l[1])
+        elif len(l) == 3:
+            if l[2] == 'kB':
+                v = int(l[1]) * 1024
+            else:
+                continue
+        else:
             continue
         k = l[0].replace(':', '').replace('(', '_').replace(')', '')
-        v = int(l[-2]) * 1024
         out['node_memory_%s' % k] = entry(
             [({}, v)],
             'gauge',
@@ -416,11 +422,17 @@ def parse_args():
 
 def run_collector(collector_name, collector, collector_metrics, times, successes):
     start_time = time.time()
-    collector_output = collector()
+    try:
+        collector_output = collector()
+    except:
+        end_time = time.time()
+        times.append(({'collector': collector_name}, (end_time - start_time)))
+        successes.append(({'collector': collector_name}, 0))
+        return
     end_time = time.time()
     update_dict(collector_metrics, collector_output)
     times.append(({'collector': collector_name}, (end_time - start_time)))
-    successes.append(({'collector': collector_name}, 1))  # FIXME
+    successes.append(({'collector': collector_name}, 1))
 
 
 def assemble_stats():
@@ -429,8 +441,8 @@ def assemble_stats():
     out = {}
     output = ''
     run_collector('conntrack', collector_conntrack, out, times, successes)
-    run_collector('entropy', collector_entropy, out, times, successes)
     run_collector('diskstats', collector_diskstats, out, times, successes)
+    run_collector('entropy', collector_entropy, out, times, successes)
     run_collector('filefd', collector_filefd, out, times, successes)
     run_collector('filesystem', collector_filesystem, out, times, successes)
     run_collector('loadavg', collector_loadavg, out, times, successes)
