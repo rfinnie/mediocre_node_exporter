@@ -33,7 +33,7 @@ INDEX_PAGE_CONTENT = """<html>
 <head><title>Mediocre Node Exporter</title></head>
 <body>
 <h1>Mediocre Node Exporter</h1>
-<p><a href="/metrics">Metrics</a></p>
+<p><a href="{telemetry_path}">Metrics</a></p>
 </body>
 </html>"""
 
@@ -428,6 +428,11 @@ def parse_args():
         help='address on which to expose metrics and web interface',
     )
     parser.add_argument(
+        '-web.telemetry-path', type=str, default='/metrics',
+        dest='telemetry_path',
+        help='path under which to expose metrics',
+    )
+    parser.add_argument(
         '-dump', action='store_true',
         help='do not start web server, just dump stats',
     )
@@ -502,8 +507,10 @@ class HTTPServerV6(BaseHTTPServer.HTTPServer):
 
 
 class NodeExporterHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    config = None
+
     def do_GET(self):
-        if self.path == '/metrics':
+        if self.path == self.config.telemetry_path:
             content = {
                 'code': 200,
                 'output': assemble_stats(),
@@ -512,7 +519,9 @@ class NodeExporterHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == '/':
             content = {
                 'code': 200,
-                'output': INDEX_PAGE_CONTENT,
+                'output': INDEX_PAGE_CONTENT.format(
+                    telemetry_path=self.config.telemetry_path,
+                ),
                 'content_type': 'text/html; charset=utf-8',
             }
         else:
@@ -563,6 +572,7 @@ if __name__ == '__main__':
         (server_addrinfo[-1][0], server_addrinfo[-1][1]),
         NodeExporterHandler
     )
+    httpd.RequestHandlerClass.config = config
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
