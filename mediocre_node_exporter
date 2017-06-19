@@ -415,12 +415,32 @@ def collector_uname():
     return(out)
 
 
+def read_textfiles(path):
+    out = ''
+    try:
+        promfiles = [fn for fn in os.listdir(path) if os.path.isfile(os.path.join(path, fn)) and fn.endswith('.prom')]
+    except (IOError, OSError):
+        return out
+    for fn in sorted(promfiles):
+        try:
+            with open(os.path.join(path, fn)) as f:
+                out += f.read()
+        except (IOError, OSError):
+            continue
+    return out
+
+
 def parse_args():
     import argparse
 
     parser = argparse.ArgumentParser(
         description='mediocre_node_exporter',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        '-collector.textfile.directory', type=str, default=None,
+        dest='textfile_directory',
+        help='directory to read text files with metrics from',
     )
     parser.add_argument(
         '-web.listen-address', type=str, default=':9100',
@@ -454,7 +474,7 @@ def run_collector(collector_name, collector, collector_metrics, times, successes
     successes.append(({'collector': collector_name}, 1))
 
 
-def assemble_stats():
+def assemble_stats(config):
     times = []
     successes = []
     out = {}
@@ -499,6 +519,9 @@ def assemble_stats():
             else:
                 output += '%s %s\n' % (k, a[1])
 
+    if config.textfile_directory:
+        output += read_textfiles(config.textfile_directory)
+
     return(output)
 
 
@@ -513,7 +536,7 @@ class NodeExporterHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.path == self.config.telemetry_path:
             content = {
                 'code': 200,
-                'output': assemble_stats(),
+                'output': assemble_stats(self.config),
                 'content_type': 'text/plain; version=0.0.4',
             }
         elif self.path == '/':
