@@ -406,15 +406,12 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        '--local-port', '-l', type=int, default=9100,
-        help='local port for web server',
+        '-web.listen-address', type=str, default=':9100',
+        dest='listen_address',
+        help='address on which to expose metrics and web interface',
     )
     parser.add_argument(
-        '--local-addr', type=str, default='::',
-        help='local address for web server',
-    )
-    parser.add_argument(
-        '--dump', action='store_true',
+        '-dump', action='store_true',
         help='do not start web server, just dump stats',
     )
     return parser.parse_args()
@@ -521,11 +518,28 @@ if __name__ == '__main__':
     config = parse_args()
     if config.dump:
         sys.stdout.write(assemble_stats())
-    else:
+        sys.exit(0)
+    server_port = int(config.listen_address.split(':')[-1])
+    server_host = ':'.join(config.listen_address.split(':')[:-1])
+    if server_host == '':
+        test_addrinfo = socket.getaddrinfo(None, server_port)[0]
+        if test_addrinfo[0] == socket.AF_INET6:
+            server_host = '::'
+        else:
+            server_host = '0.0.0.0'
+    if (server_host[0] == '[') and (server_host[-1] == ']'):
+        server_host = server_host[1:-1]
+    server_addrinfo = socket.getaddrinfo(server_host, server_port)[0]
+    if server_addrinfo[0] == socket.AF_INET6:
         server_class = HTTPServerV6
-        httpd = server_class(('::', 9100), NodeExporterHandler)
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            pass
-        httpd.server_close()
+    else:
+        server_class = BaseHTTPServer.HTTPServer
+    httpd = server_class(
+        (server_addrinfo[-1][0], server_addrinfo[-1][1]),
+        NodeExporterHandler
+    )
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    httpd.server_close()
