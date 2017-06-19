@@ -29,6 +29,23 @@ import platform
 import re
 
 
+INDEX_PAGE_CONTENT = """<html>
+<head><title>Mediocre Node Exporter</title></head>
+<body>
+<h1>Mediocre Node Exporter</h1>
+<p><a href="/metrics">Metrics</a></p>
+</body>
+</html>"""
+
+NOTFOUND_PAGE_CONTENT = """<html>
+<head><title>404 Not Found</title></head>
+<body>
+<h1>Not Found</h1>
+<p>The requested URL was not found on this server.</p>
+</body>
+</html>"""
+
+
 def entry(values, type='gauge', help=None):
     out = {
         'values': values,
@@ -486,31 +503,39 @@ class HTTPServerV6(BaseHTTPServer.HTTPServer):
 
 class NodeExporterHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
-        do_gzip = False
+        if self.path == '/metrics':
+            content = {
+                'code': 200,
+                'output': assemble_stats(),
+                'content_type': 'text/plain; version=0.0.4',
+            }
+        elif self.path == '/':
+            content = {
+                'code': 200,
+                'output': INDEX_PAGE_CONTENT,
+                'content_type': 'text/html; charset=utf-8',
+            }
+        else:
+            content = {
+                'code': 404,
+                'output': NOTFOUND_PAGE_CONTENT,
+                'content_type': 'text/html; charset=utf-8',
+            }
+
+        self.protocol_version = self.request_version
+        self.send_response(content['code'])
+        self.send_header('Content-Type', content['content_type'])
+        output = content['output']
         if self.headers.getheader('Accept-Encoding') and ('gzip' in self.headers.getheader('Accept-Encoding')):
-            do_gzip = True
-        output = assemble_stats()
-        if do_gzip:
             zbuf = cStringIO.StringIO()
             zfile = gzip.GzipFile(mode='wb', compresslevel=6, fileobj=zbuf)
             zfile.write(output)
             zfile.close()
-            compressed_content = zbuf.getvalue()
-
-        self.protocol_version = self.request_version
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/plain; version=0.0.4')
-        if do_gzip:
+            output = zbuf.getvalue()
             self.send_header('Content-Encoding', 'gzip')
-            self.send_header('Content-Length', str(len(compressed_content)))
-        else:
-            self.send_header('Content-Length', str(len(output)))
+        self.send_header('Content-Length', str(len(output)))
         self.end_headers()
-        if do_gzip:
-            x = compressed_content
-        else:
-            x = output
-        self.wfile.write(x)
+        self.wfile.write(output)
         self.wfile.close()
 
 
