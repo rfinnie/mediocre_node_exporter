@@ -1,5 +1,6 @@
 from . import BaseCollector, entry
 import os
+import re
 
 
 class Collector(BaseCollector):
@@ -9,6 +10,8 @@ class Collector(BaseCollector):
 
     def run(self):
         out = {}
+        re_ignored_fs_types = re.compile(self.config.filesystem_ignored_fs_types)
+        re_ignored_mount_points = re.compile(self.config.filesystem_ignored_mount_points)
         values_available = []
         values_files = []
         values_files_free = []
@@ -20,6 +23,10 @@ class Collector(BaseCollector):
             for l in f:
                 mounts.append(l.rstrip().split(' '))
         for l in mounts:
+            if re_ignored_mount_points.match(l[1]):
+                continue
+            if re_ignored_fs_types.match(l[2]):
+                continue
             mount = l[1]
             vfs = os.statvfs(mount)
             labels = {
@@ -69,3 +76,17 @@ class Collector(BaseCollector):
             'Filesystem size in bytes.',
         )
         self.output = out
+
+    def parser_config(self, parser):
+        parser.add_argument(
+            '-collector.filesystem.ignored-fs-types', type=str,
+            default='^(sys|proc|auto)fs$',
+            dest='filesystem_ignored_fs_types',
+            help='Regexp of filesystem types to ignore for filesystem collector.',
+        )
+        parser.add_argument(
+            '-collector.filesystem.ignored-mount-points', type=str,
+            default='^/(sys|proc|dev)($|/)',
+            dest='filesystem_ignored_mount_points',
+            help='Regexp of mount points to ignore for filesystem collector.',
+        )

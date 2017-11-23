@@ -10,6 +10,7 @@ class Collector(BaseCollector):
 
     def run(self):
         out = {}
+        re_ignored_devices = re.compile(self.config.diskstats_ignored_devices)
         metrics_info = [
             ('node_disk_reads_completed', 'counter', 'The total number of reads completed successfully.'),
             ('node_disk_reads_merged', 'counter', 'The total number of reads merged. See https://www.kernel.org/doc/Documentation/iostats.txt.'),
@@ -33,6 +34,8 @@ class Collector(BaseCollector):
             for l in f:
                 diskstats.append(re.split('\s+', l.strip()))
         for l in diskstats:
+            if re_ignored_devices.match(l[2]):
+                continue
             labels = {
                 'device': l[2],
             }
@@ -54,3 +57,11 @@ class Collector(BaseCollector):
         for (metric, metric_type, metric_help) in metrics_info:
             out[metric] = entry(values[metric], metric_type, metric_help)
         self.output = out
+
+    def parser_config(self, parser):
+        parser.add_argument(
+            '-collector.diskstats.ignored-devices', type=str,
+            default='^(ram|loop|fd|(h|s|v|xv)d[a-z]|nvme\\d+n\\d+p)\\d+$',
+            dest='diskstats_ignored_devices',
+            help='Regexp of devices to ignore for diskstats.',
+        )

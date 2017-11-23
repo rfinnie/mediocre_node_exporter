@@ -1,5 +1,6 @@
 from . import BaseCollector, entry
 import os
+import re
 
 
 class Collector(BaseCollector):
@@ -9,6 +10,7 @@ class Collector(BaseCollector):
 
     def run(self):
         out = {}
+        re_ignored_devices = re.compile(self.config.netdev_ignored_devices)
         interfaces = os.listdir('/sys/class/net')
         statmap = {
             'receive_bytes': 'rx_bytes',
@@ -32,6 +34,8 @@ class Collector(BaseCollector):
         for statkey in sorted(statmap):
             values = []
             for iface in interfaces:
+                if re_ignored_devices.match(iface):
+                    continue
                 labels = {
                     'device': iface,
                 }
@@ -49,3 +53,11 @@ class Collector(BaseCollector):
                 'Network device statistic %s.' % statkey,
             )
         self.output = out
+
+    def parser_config(self, parser):
+        parser.add_argument(
+            '-collector.netdev.ignored-devices', type=str,
+            default='^$',
+            dest='netdev_ignored_devices',
+            help='Regexp of net devices to ignore for netdev collector.',
+        )
