@@ -4,9 +4,11 @@ import os
 
 
 class Collector(BaseCollector):
-    def run(self):
+    def __init__(self):
         if not os.path.exists('/proc/meminfo'):
-            return
+            raise NotImplementedError
+
+    def run(self):
         out = {}
         lines = []
         with open('/proc/meminfo') as f:

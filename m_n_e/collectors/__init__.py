@@ -16,6 +16,9 @@ class BaseCollector:
     def parser_config(self, parser):
         pass
 
+    def __init__(self):
+        pass
+
 
 class Collectors:
     collectors = {}
@@ -26,8 +29,15 @@ class Collectors:
     successes = []
 
     def __init__(self):
-        for collector in collectors_available:
-            self.collectors[collector] = collectors_available[collector]()
+        for collector_name in collectors_available:
+            try:
+                collector = collectors_available[collector_name]()
+            except NotImplementedError:
+                continue
+            except:
+                traceback.print_exc(file=sys.stderr)
+                continue
+            self.collectors[collector_name] = collector
 
     def dump_metrics(self):
         self.run()

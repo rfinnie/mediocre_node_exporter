@@ -3,9 +3,11 @@ import os
 
 
 class Collector(BaseCollector):
-    def run(self):
+    def __init__(self):
         if not os.path.exists('/sys/class/net'):
-            return
+            raise NotImplementedError
+
+    def run(self):
         out = {}
         interfaces = os.listdir('/sys/class/net')
         statmap = {

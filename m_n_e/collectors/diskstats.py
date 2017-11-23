@@ -4,9 +4,11 @@ import os
 
 
 class Collector(BaseCollector):
-    def run(self):
+    def __init__(self):
         if not os.path.exists('/proc/diskstats'):
-            return
+            raise NotImplementedError
+
+    def run(self):
         out = {}
         metrics_info = [
             ('node_disk_reads_completed', 'counter', 'The total number of reads completed successfully.'),

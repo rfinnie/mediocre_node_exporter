@@ -3,9 +3,11 @@ import os
 
 
 class Collector(BaseCollector):
-    def run(self):
+    def __init__(self):
         if not os.path.exists('/proc/stat'):
-            return
+            raise NotImplementedError
+
+    def run(self):
         out = {}
         statdata = {}
         with open('/proc/stat') as f:

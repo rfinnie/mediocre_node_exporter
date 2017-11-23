@@ -3,6 +3,13 @@ import os
 
 
 class Collector(BaseCollector):
+    def __init__(self):
+        if not (
+            os.path.exists('/proc/sys/net/netfilter/nf_conntrack_count') or
+            os.path.exists('/proc/sys/net/netfilter/nf_conntrack_max')
+        ):
+            raise NotImplementedError
+
     def run(self):
         out = {}
         if os.path.exists('/proc/sys/net/netfilter/nf_conntrack_count'):

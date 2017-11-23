@@ -3,9 +3,11 @@ import os
 
 
 class Collector(BaseCollector):
-    def run(self):
+    def __init__(self):
         if not os.path.exists('/proc/mounts'):
-            return
+            raise NotImplementedError
+
+    def run(self):
         out = {}
         values_available = []
         values_files = []

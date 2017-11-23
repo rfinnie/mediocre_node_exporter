@@ -3,9 +3,11 @@ import os
 
 
 class Collector(BaseCollector):
-    def run(self):
+    def __init__(self):
         if not os.path.exists('/proc/vmstat'):
-            return
+            raise NotImplementedError
+
+    def run(self):
         out = {}
         lines = []
         with open('/proc/vmstat') as f:

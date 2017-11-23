@@ -65,6 +65,13 @@ def parse_args(collectors):
         help='do not start web server, just dump stats',
     )
 
+    collector_names = ','.join(sorted(collectors.keys()))
+    parser.add_argument(
+        '-collectors.enabled', type=str, default=collector_names,
+        dest='collectors_enabled',
+        help='Comma-separated list of collectors to use.',
+    )
+
     for collector_name in collectors:
         collector = collectors[collector_name]
         collector.parser_config(parser)
@@ -122,6 +129,11 @@ class NodeExporterHandler(http.server.BaseHTTPRequestHandler):
 def main():
     Collectors = collectors.Collectors()
     config = parse_args(Collectors.collectors)
+    collectors_enabled = config.collectors_enabled.split(',')
+    all_collectors = sorted([x for x in Collectors.collectors.keys()])
+    for collector in all_collectors:
+        if collector not in collectors_enabled:
+            del(Collectors.collectors[collector])
     Collectors.set_config(config)
     if config.dump:
         sys.stdout.write(Collectors.dump_metrics())
