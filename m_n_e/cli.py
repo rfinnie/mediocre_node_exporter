@@ -19,7 +19,6 @@
 # 02110-1301, USA.
 
 import sys
-import os
 import http.server
 import socket
 import io
@@ -75,6 +74,16 @@ def parse_args(collectors):
         '-collectors.print', action='store_true',
         dest='collectors_print',
         help='If true, print available collectors and exit.',
+    )
+    parser.add_argument(
+        '-collector.procfs', type=str, default='/proc',
+        dest='procfs',
+        help='procfs mountpoint.',
+    )
+    parser.add_argument(
+        '-collector.sysfs', type=str, default='/sys',
+        dest='sysfs',
+        help='sysfs mountpoint.',
     )
 
     for collector_name in collectors:
@@ -135,6 +144,8 @@ def main():
     Collectors = collectors.Collectors()
     config = parse_args(Collectors.collectors)
     collectors_enabled = config.collectors_enabled.split(',')
+    Collectors.set_config(config)
+    Collectors.postinit()
     all_collectors = sorted([x for x in Collectors.collectors.keys()])
     if config.collectors_print:
         print('Available collectors:')
@@ -144,7 +155,6 @@ def main():
     for collector in all_collectors:
         if collector not in collectors_enabled:
             del(Collectors.collectors[collector])
-    Collectors.set_config(config)
     if config.dump:
         sys.stdout.write(Collectors.dump_metrics())
         return

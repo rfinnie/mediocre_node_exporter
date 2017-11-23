@@ -3,14 +3,14 @@ import os
 
 
 class Collector(BaseCollector):
-    def __init__(self):
-        if not os.path.exists('/proc/vmstat'):
+    def postinit(self):
+        if not os.path.exists(os.path.join(self.config.procfs, 'vmstat')):
             raise NotImplementedError
 
     def run(self):
         out = {}
         lines = []
-        with open('/proc/vmstat') as f:
+        with open(os.path.join(self.config.procfs, 'vmstat')) as f:
             for l in f:
                 lines.append(l.rstrip().split(' '))
         for l in lines:

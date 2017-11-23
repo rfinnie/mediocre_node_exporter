@@ -3,14 +3,14 @@ import os
 
 
 class Collector(BaseCollector):
-    def __init__(self):
-        if not os.path.exists('/proc/stat'):
+    def postinit(self):
+        if not os.path.exists(os.path.join(self.config.procfs, 'stat')):
             raise NotImplementedError
 
     def run(self):
         out = {}
         statdata = {}
-        with open('/proc/stat') as f:
+        with open(os.path.join(self.config.procfs, 'stat')) as f:
             for l in f:
                 llist = l.rstrip().split(' ')
                 k = llist.pop(0)

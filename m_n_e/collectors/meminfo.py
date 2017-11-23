@@ -4,16 +4,17 @@ import os
 
 
 class Collector(BaseCollector):
-    def __init__(self):
-        if not os.path.exists('/proc/meminfo'):
+    def postinit(self):
+        if not os.path.exists(os.path.join(self.config.procfs, 'meminfo')):
             raise NotImplementedError
+        self.re_whitespace = re.compile('\s+')
 
     def run(self):
         out = {}
         lines = []
-        with open('/proc/meminfo') as f:
+        with open(os.path.join(self.config.procfs, 'meminfo')) as f:
             for l in f:
-                lines.append(re.split('\s+', l.strip()))
+                lines.append(self.re_whitespace.split(l.strip()))
         for l in lines:
             if len(l) == 2:
                 v = int(l[1])

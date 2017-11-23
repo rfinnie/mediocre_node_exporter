@@ -3,13 +3,13 @@ import os
 
 
 class Collector(BaseCollector):
-    def __init__(self):
-        if not os.path.exists('/proc/sys/fs/file-nr'):
+    def postinit(self):
+        if not os.path.exists(os.path.join(self.config.procfs, 'sys/fs/file-nr')):
             raise NotImplementedError
 
     def run(self):
         out = {}
-        with open('/proc/sys/fs/file-nr') as f:
+        with open(os.path.join(self.config.procfs, 'sys/fs/file-nr')) as f:
             fdlist = f.read().rstrip().split('\t')
         out['node_filefd_allocated'] = entry(
             [({}, int(fdlist[0]))],

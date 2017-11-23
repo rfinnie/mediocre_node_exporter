@@ -4,14 +4,14 @@ import re
 
 
 class Collector(BaseCollector):
-    def __init__(self):
-        if not os.path.exists('/proc/mounts'):
+    def postinit(self):
+        if not os.path.exists(os.path.join(self.config.procfs, 'mounts')):
             raise NotImplementedError
+        self.re_ignored_fs_types = re.compile(self.config.filesystem_ignored_fs_types)
+        self.re_ignored_mount_points = re.compile(self.config.filesystem_ignored_mount_points)
 
     def run(self):
         out = {}
-        re_ignored_fs_types = re.compile(self.config.filesystem_ignored_fs_types)
-        re_ignored_mount_points = re.compile(self.config.filesystem_ignored_mount_points)
         values_available = []
         values_files = []
         values_files_free = []
@@ -19,13 +19,13 @@ class Collector(BaseCollector):
         values_readonly = []
         values_size = []
         mounts = []
-        with open('/proc/mounts') as f:
+        with open(os.path.join(self.config.procfs, 'mounts')) as f:
             for l in f:
                 mounts.append(l.rstrip().split(' '))
         for l in mounts:
-            if re_ignored_mount_points.match(l[1]):
+            if self.re_ignored_mount_points.match(l[1]):
                 continue
-            if re_ignored_fs_types.match(l[2]):
+            if self.re_ignored_fs_types.match(l[2]):
                 continue
             mount = l[1]
             vfs = os.statvfs(mount)

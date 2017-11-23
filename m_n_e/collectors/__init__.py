@@ -10,13 +10,16 @@ class BaseCollector:
     output_raw = ''
     config = None
 
+    def __init__(self):
+        pass
+
+    def postinit(self):
+        pass
+
     def run(self):
         pass
 
     def parser_config(self, parser):
-        pass
-
-    def __init__(self):
         pass
 
 
@@ -78,6 +81,18 @@ class Collectors:
         self.config = config
         for collector in self.collectors:
             self.collectors[collector].config = self.config
+
+    def postinit(self):
+        collector_names = [x for x in self.collectors.keys()]
+        for collector_name in collector_names:
+            collector = self.collectors[collector_name]
+            try:
+                collector.postinit()
+            except NotImplementedError:
+                del(self.collectors[collector_name])
+            except:
+                traceback.print_exc(file=sys.stderr)
+                del(self.collectors[collector_name])
 
     def run(self):
         self.metrics = {}

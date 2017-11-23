@@ -4,14 +4,14 @@ import re
 
 
 class Collector(BaseCollector):
-    def __init__(self):
-        if not os.path.exists('/sys/class/net'):
+    def postinit(self):
+        if not os.path.exists(os.path.join(self.config.sysfs, 'class/net')):
             raise NotImplementedError
+        self.re_ignored_devices = re.compile(self.config.netdev_ignored_devices)
 
     def run(self):
         out = {}
-        re_ignored_devices = re.compile(self.config.netdev_ignored_devices)
-        interfaces = os.listdir('/sys/class/net')
+        interfaces = os.listdir(os.path.join(self.config.sysfs, 'class/net'))
         statmap = {
             'receive_bytes': 'rx_bytes',
             'receive_compressed': 'rx_compressed',
@@ -34,17 +34,17 @@ class Collector(BaseCollector):
         for statkey in sorted(statmap):
             values = []
             for iface in interfaces:
-                if re_ignored_devices.match(iface):
+                if self.re_ignored_devices.match(iface):
                     continue
                 labels = {
                     'device': iface,
                 }
                 if not statmap[statkey]:
                     val = 0
-                elif not os.path.exists('/sys/class/net/%s/statistics/%s' % (iface, statmap[statkey])):
+                elif not os.path.exists('%s/class/net/%s/statistics/%s' % (self.config.sysfs, iface, statmap[statkey])):
                     val = 0
                 else:
-                    with open('/sys/class/net/%s/statistics/%s' % (iface, statmap[statkey])) as f:
+                    with open('%s/class/net/%s/statistics/%s' % (self.config.sysfs, iface, statmap[statkey])) as f:
                         val = int(f.read().rstrip())
                 values.append((labels, val))
             out['node_network_%s' % statkey] = entry(

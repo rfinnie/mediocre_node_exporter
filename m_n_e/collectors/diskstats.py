@@ -4,13 +4,14 @@ import os
 
 
 class Collector(BaseCollector):
-    def __init__(self):
-        if not os.path.exists('/proc/diskstats'):
+    def postinit(self):
+        if not os.path.exists(os.path.join(self.config.procfs, 'diskstats')):
             raise NotImplementedError
+        self.re_ignored_devices = re.compile(self.config.diskstats_ignored_devices)
+        self.re_whitespace = re.compile('\s+')
 
     def run(self):
         out = {}
-        re_ignored_devices = re.compile(self.config.diskstats_ignored_devices)
         metrics_info = [
             ('node_disk_reads_completed', 'counter', 'The total number of reads completed successfully.'),
             ('node_disk_reads_merged', 'counter', 'The total number of reads merged. See https://www.kernel.org/doc/Documentation/iostats.txt.'),
@@ -30,11 +31,11 @@ class Collector(BaseCollector):
         for (metric, metric_type, metric_help) in metrics_info:
             values[metric] = []
         diskstats = []
-        with open('/proc/diskstats') as f:
+        with open(os.path.join(self.config.procfs, 'diskstats')) as f:
             for l in f:
-                diskstats.append(re.split('\s+', l.strip()))
+                diskstats.append(self.re_whitespace.split(l.strip()))
         for l in diskstats:
-            if re_ignored_devices.match(l[2]):
+            if self.re_ignored_devices.match(l[2]):
                 continue
             labels = {
                 'device': l[2],
