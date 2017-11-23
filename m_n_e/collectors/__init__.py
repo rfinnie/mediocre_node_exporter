@@ -1,6 +1,8 @@
 import pkgutil
 import importlib
 import time
+import sys
+import traceback
 
 
 class BaseCollector:
@@ -83,7 +85,8 @@ class Collectors:
                 end_time = time.time()
                 self.times.append(({'collector': collector_name}, (end_time - start_time)))
                 self.successes.append(({'collector': collector_name}, 0))
-                return
+                traceback.print_exc(file=sys.stderr)
+                continue
             end_time = time.time()
             update_dict(self.metrics, collector.output)
             self.metrics_raw += collector.output_raw

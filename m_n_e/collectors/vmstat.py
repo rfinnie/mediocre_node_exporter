@@ -1,8 +1,11 @@
 from . import BaseCollector, entry
+import os
 
 
 class Collector(BaseCollector):
     def run(self):
+        if not os.path.exists('/proc/vmstat'):
+            return
         out = {}
         lines = []
         with open('/proc/vmstat') as f:

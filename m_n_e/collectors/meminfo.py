@@ -1,9 +1,12 @@
 from . import BaseCollector, entry
 import re
+import os
 
 
 class Collector(BaseCollector):
     def run(self):
+        if not os.path.exists('/proc/meminfo'):
+            return
         out = {}
         lines = []
         with open('/proc/meminfo') as f:

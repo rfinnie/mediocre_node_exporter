@@ -4,6 +4,8 @@ import os
 
 class Collector(BaseCollector):
     def run(self):
+        if not os.path.exists('/proc/mounts'):
+            return
         out = {}
         values_available = []
         values_files = []

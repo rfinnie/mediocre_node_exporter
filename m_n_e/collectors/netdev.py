@@ -4,6 +4,8 @@ import os
 
 class Collector(BaseCollector):
     def run(self):
+        if not os.path.exists('/sys/class/net'):
+            return
         out = {}
         interfaces = os.listdir('/sys/class/net')
         statmap = {
