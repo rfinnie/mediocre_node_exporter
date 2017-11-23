@@ -3,6 +3,10 @@ import os
 
 
 class Collector(BaseCollector):
+    def postinit(self):
+        if not hasattr(os, 'getloadavg'):
+            raise NotImplementedError
+
     def run(self):
         out = {}
         loadavg = os.getloadavg()
