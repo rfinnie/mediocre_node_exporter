@@ -71,6 +71,11 @@ def parse_args(collectors):
         dest='collectors_enabled',
         help='Comma-separated list of collectors to use.',
     )
+    parser.add_argument(
+        '-collectors.print', action='store_true',
+        dest='collectors_print',
+        help='If true, print available collectors and exit.',
+    )
 
     for collector_name in collectors:
         collector = collectors[collector_name]
@@ -131,13 +136,18 @@ def main():
     config = parse_args(Collectors.collectors)
     collectors_enabled = config.collectors_enabled.split(',')
     all_collectors = sorted([x for x in Collectors.collectors.keys()])
+    if config.collectors_print:
+        print('Available collectors:')
+        for collector_name in all_collectors:
+            print('- {}'.format(collector_name))
+        return
     for collector in all_collectors:
         if collector not in collectors_enabled:
             del(Collectors.collectors[collector])
     Collectors.set_config(config)
     if config.dump:
         sys.stdout.write(Collectors.dump_metrics())
-        sys.exit(0)
+        return
     server_port = int(config.listen_address.split(':')[-1])
     server_host = ':'.join(config.listen_address.split(':')[:-1])
     if server_host == '':
