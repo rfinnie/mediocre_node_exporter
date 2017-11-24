@@ -1,6 +1,5 @@
 import pkgutil
 import importlib
-import time
 import sys
 import traceback
 from .. import monotonic_clock
