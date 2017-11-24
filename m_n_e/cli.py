@@ -124,6 +124,7 @@ class NodeExporterHandler(http.server.BaseHTTPRequestHandler):
 
         self.protocol_version = self.request_version
         self.send_response(content['code'])
+        self.send_header('Server', 'mediocre_node_exporter')
         self.send_header('Content-Type', content['content_type'])
         output = content['output']
         if self.headers.get('Accept-Encoding') and ('gzip' in self.headers.get('Accept-Encoding')):
