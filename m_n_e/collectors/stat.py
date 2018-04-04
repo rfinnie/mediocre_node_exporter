@@ -25,7 +25,7 @@ class Collector(BaseCollector):
                 continue
             for i in range(len(cpu_modes)):
                 try:
-                    cpu_values.append(({'cpu': st, 'mode': cpu_modes[i]}, int(float(statdata[st][i]) / 100)))
+                    cpu_values.append(({'cpu': st, 'mode': cpu_modes[i]}, float(statdata[st][i]) / 100))
                 except IndexError:
                     continue
         out['node_cpu'] = entry(
