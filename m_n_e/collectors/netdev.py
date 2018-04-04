@@ -56,7 +56,7 @@ class Collector(BaseCollector):
 
     def parser_config(self, parser):
         parser.add_argument(
-            '-collector.netdev.ignored-devices', type=str,
+            '-collector.netdev.ignored-devices', '--collector.netdev.ignored-devices', type=str,
             default='^$',
             dest='netdev_ignored_devices',
             help='Regexp of net devices to ignore for netdev collector.',

@@ -50,38 +50,38 @@ def parse_args(collectors):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        '-web.listen-address', type=str, default=':9100',
+        '-web.listen-address', '--web.listen-address', type=str, default=':9100',
         dest='listen_address',
         help='address on which to expose metrics and web interface',
     )
     parser.add_argument(
-        '-web.telemetry-path', type=str, default='/metrics',
+        '-web.telemetry-path', '--web.telemetry-path', type=str, default='/metrics',
         dest='telemetry_path',
         help='path under which to expose metrics',
     )
     parser.add_argument(
-        '-dump', action='store_true',
+        '-dump', '--dump', action='store_true',
         help='do not start web server, just dump stats',
     )
 
     collector_names = ','.join(sorted(collectors.keys()))
     parser.add_argument(
-        '-collectors.enabled', type=str, default=collector_names,
+        '-collectors.enabled', '--collectors.enabled', type=str, default=collector_names,
         dest='collectors_enabled',
         help='Comma-separated list of collectors to use.',
     )
     parser.add_argument(
-        '-collectors.print', action='store_true',
+        '-collectors.print', '--collectors.print', action='store_true',
         dest='collectors_print',
         help='If true, print available collectors and exit.',
     )
     parser.add_argument(
-        '-collector.procfs', type=str, default='/proc',
+        '-collector.procfs', '--collector.procfs', type=str, default='/proc',
         dest='procfs',
         help='procfs mountpoint.',
     )
     parser.add_argument(
-        '-collector.sysfs', type=str, default='/sys',
+        '-collector.sysfs', '--collector.sysfs', type=str, default='/sys',
         dest='sysfs',
         help='sysfs mountpoint.',
     )

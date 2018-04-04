@@ -79,13 +79,13 @@ class Collector(BaseCollector):
 
     def parser_config(self, parser):
         parser.add_argument(
-            '-collector.filesystem.ignored-fs-types', type=str,
+            '-collector.filesystem.ignored-fs-types', '--collector.filesystem.ignored-fs-types', type=str,
             default='^(sys|proc|auto)fs$',
             dest='filesystem_ignored_fs_types',
             help='Regexp of filesystem types to ignore for filesystem collector.',
         )
         parser.add_argument(
-            '-collector.filesystem.ignored-mount-points', type=str,
+            '-collector.filesystem.ignored-mount-points', '--collector.filesystem.ignored-mount-points', type=str,
             default='^/(sys|proc|dev)($|/)',
             dest='filesystem_ignored_mount_points',
             help='Regexp of mount points to ignore for filesystem collector.',

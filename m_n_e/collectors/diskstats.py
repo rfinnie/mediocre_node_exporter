@@ -61,7 +61,7 @@ class Collector(BaseCollector):
 
     def parser_config(self, parser):
         parser.add_argument(
-            '-collector.diskstats.ignored-devices', type=str,
+            '-collector.diskstats.ignored-devices', '--collector.diskstats.ignored-devices', type=str,
             default='^(ram|loop|fd|(h|s|v|xv)d[a-z]|nvme\\d+n\\d+p)\\d+$',
             dest='diskstats_ignored_devices',
             help='Regexp of devices to ignore for diskstats.',

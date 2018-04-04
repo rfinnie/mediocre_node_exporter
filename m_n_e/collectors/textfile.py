@@ -86,7 +86,7 @@ class Collector(BaseCollector):
 
     def parser_config(self, parser):
         parser.add_argument(
-            '-collector.textfile.directory', type=str, default=None,
+            '-collector.textfile.directory', '--collector.textfile.directory', type=str, default=None,
             dest='textfile_directory',
             help='directory to read text files with metrics from',
         )
