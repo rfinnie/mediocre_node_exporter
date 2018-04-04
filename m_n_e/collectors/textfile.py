@@ -57,7 +57,7 @@ class Collector(BaseCollector):
             try:
                 mtimes.append((
                         {'file': fn},
-                        int(os.path.getmtime(os.path.join(path, fn)))
+                        os.path.getmtime(os.path.join(path, fn))
                 ))
                 with open(os.path.join(path, fn)) as f:
                     self.parse_text(f.read(), runseries)
