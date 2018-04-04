@@ -57,9 +57,6 @@ class Collectors:
             'node_exporter: Whether a collector succeeded.',
         )
 
-        import pprint
-        pprint.pprint(self.metrics)
-
         output = ''
         for k in sorted(self.metrics):
             if self.metrics[k]['help']:
