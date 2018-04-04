@@ -23,11 +23,12 @@ class Collector(BaseCollector):
             for l in f:
                 mounts.append(l.rstrip().split(' '))
         for l in mounts:
-            if self.re_ignored_mount_points.match(l[1]):
+            # /proc/mounts entry can be e.g. /media/foo\040bar'
+            mount = l[1].encode('utf-8').decode('unicode_escape')
+            if self.re_ignored_mount_points.match(mount):
                 continue
             if self.re_ignored_fs_types.match(l[2]):
                 continue
-            mount = l[1]
             vfs = os.statvfs(mount)
             labels = {
                 'device': l[0],
