@@ -61,6 +61,11 @@ def parse_args(collectors):
         help='path under which to expose metrics',
     )
     parser.add_argument(
+        '-web.xff-trusted-relays', '--web.xff-trusted-relays', type=str, default='127.0.0.1,::1',
+        dest='xff_trusted_relays',
+        help='comma-separated relays trusted to set X-Forwarded-For',
+    )
+    parser.add_argument(
         '-dump', '--dump', action='store_true',
         help='do not start web server, just dump stats',
     )
@@ -94,18 +99,67 @@ def parse_args(collectors):
     return parser.parse_args()
 
 
-class HTTPServer(socketserver.ForkingMixIn, http.server.HTTPServer):
+class BaseHTTPServer(http.server.HTTPServer):
     pass
 
 
-class HTTPServerV6(socketserver.ForkingMixIn, http.server.HTTPServer):
+class HTTPServer(socketserver.ForkingMixIn, BaseHTTPServer):
+    pass
+
+
+class HTTPServerV6(socketserver.ForkingMixIn, BaseHTTPServer):
     address_family = socket.AF_INET6
 
 
 class NodeExporterHandler(http.server.BaseHTTPRequestHandler):
+    server_version = 'mediocre_node_exporter'
+    sys_version = ''
+
+    # HTTP/1.1 requires very specific handling.  In general, every response
+    # either needs Content-Length or Connection: close.  Exceptions are
+    # codes 1xx, 204, and 304.
+    protocol_version = 'HTTP/1.1'
+
     Collectors = None
 
+    def log_request(self, code='-', size='-'):
+        """Log an accepted request."""
+        referer = '-'
+        ua = '-'
+        if 'referer' in self.headers:
+            referer = self.headers['referer']
+        if 'user-agent' in self.headers:
+            referer = self.headers['user-agent']
+
+        self.log_message('"%s" %s %s "%s" "%s"', self.requestline, str(code), str(size), str(referer), str(ua))
+
+    def process_xff(self):
+        if 'x-forwarded-for' not in self.headers:
+            return
+        xff_trusted_relays = self.Collectors.config.xff_trusted_relays.split(',')
+        remote_addr = self.client_address[0]
+        if remote_addr not in xff_trusted_relays:
+            return
+        xff_list = self.headers['x-forwarded-for'].split(', ')
+        xff_list.reverse()
+        for ip in xff_list:
+            if not ip:
+                continue
+            if ip in xff_trusted_relays:
+                continue
+            self.client_address = (ip, self.client_address[1])
+            break
+
+    def process_ipv6_normalize(self):
+        if self.server.address_family == socketserver.socket.AF_INET:
+            return
+        if self.client_address[0].startswith('::ffff:'):
+            self.client_address = (self.client_address[0][7:], self.client_address[1])
+
     def do_GET(self):
+        self.process_ipv6_normalize()
+        self.process_xff()
+
         if self.path == self.Collectors.config.telemetry_path:
             content = {
                 'code': 200,
@@ -127,9 +181,7 @@ class NodeExporterHandler(http.server.BaseHTTPRequestHandler):
                 'content_type': 'text/html; charset=utf-8',
             }
 
-        self.protocol_version = self.request_version
         self.send_response(content['code'])
-        self.send_header('Server', 'mediocre_node_exporter')
         self.send_header('Content-Type', content['content_type'])
         output = content['output']
         if self.headers.get('Accept-Encoding') and ('gzip' in self.headers.get('Accept-Encoding')):
