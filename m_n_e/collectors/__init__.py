@@ -2,6 +2,8 @@ import pkgutil
 import importlib
 import sys
 import traceback
+import re
+import shlex
 from .. import monotonic_clock
 
 
@@ -132,6 +134,54 @@ def entry(values, type='gauge', help=None):
         'help': help,
     }
     return(out)
+
+
+class TextParser:
+    def __init__(self):
+        self.re_series = re.compile('^([a-zA-Z_:][a-zA-Z0-9_:]+)(\{.*?\})? ([0-9\-\+e\.]+)$', re.M)
+        self.re_comments = re.compile('^\# ([A-Z][A-Z0-9]+) ([a-zA-Z_:][a-zA-Z0-9_:]+) (.*?)?$', re.M)
+        self.runseries = {}
+
+    def parse(self, text):
+        for (mname, mlabels, mval) in self.re_series.findall(text):
+            if mname not in self.runseries:
+                self.runseries[mname] = {
+                    'labels': [],
+                    'type': 'gauge',
+                    'help': None,
+                }
+            lexer = shlex.shlex(mlabels[1:-1], posix=True)
+            lexer.whitespace_split = True
+            lexer.whitespace = ','
+            self.runseries[mname]['labels'].append(
+                (
+                    dict(pair.split('=', 1) for pair in lexer),
+                    float(mval),
+                )
+            )
+        for (mtype, mname, mrest) in self.re_comments.findall(text):
+            if mname not in self.runseries:
+                self.runseries[mname] = {
+                    'labels': [],
+                    'type': 'gauge',
+                    'help': None,
+                }
+            if mtype == 'HELP':
+                self.runseries[mname]['help'] = mrest
+            elif mtype == 'TYPE':
+                self.runseries[mname]['type'] = mrest
+
+    def dump(self):
+        out = {}
+        for mname in self.runseries:
+            if not self.runseries[mname]['labels']:
+                continue
+            out[mname] = entry(
+                self.runseries[mname]['labels'],
+                self.runseries[mname]['type'],
+                self.runseries[mname]['help'],
+            )
+        return out
 
 
 collectors_available = {}

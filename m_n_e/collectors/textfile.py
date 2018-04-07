@@ -1,47 +1,14 @@
-from . import BaseCollector, entry
+from . import BaseCollector, entry, TextParser
 import os
-import re
-import shlex
 
 
 class Collector(BaseCollector):
     def postinit(self):
         if not self.config.textfile_directory:
             raise NotImplementedError
-        self.re_series = re.compile('^([a-zA-Z_:][a-zA-Z0-9_:]+)(\{.*?\})? ([0-9\-\+e\.]+)$', re.M)
-        self.re_comments = re.compile('^\# ([A-Z][A-Z0-9]+) ([a-zA-Z_:][a-zA-Z0-9_:]+) (.*?)?$', re.M)
-
-    def parse_text(self, text, runseries):
-        for (mname, mlabels, mval) in self.re_series.findall(text):
-            if mname not in runseries:
-                runseries[mname] = {
-                    'labels': [],
-                    'type': 'gauge',
-                    'help': None,
-                }
-            lexer = shlex.shlex(mlabels[1:-1], posix=True)
-            lexer.whitespace_split = True
-            lexer.whitespace = ','
-            runseries[mname]['labels'].append(
-                (
-                    dict(pair.split('=', 1) for pair in lexer),
-                    float(mval),
-                )
-            )
-        for (mtype, mname, mrest) in self.re_comments.findall(text):
-            if mname not in runseries:
-                runseries[mname] = {
-                    'labels': [],
-                    'type': 'gauge',
-                    'help': None,
-                }
-            if mtype == 'HELP':
-                runseries[mname]['help'] = mrest
-            elif mtype == 'TYPE':
-                runseries[mname]['type'] = mrest
 
     def run(self):
-        runseries = {}
+        parser = TextParser()
         out = {}
         mtimes = []
         scrape_error = 0
@@ -60,18 +27,12 @@ class Collector(BaseCollector):
                         os.path.getmtime(os.path.join(path, fn))
                 ))
                 with open(os.path.join(path, fn)) as f:
-                    self.parse_text(f.read(), runseries)
+                    parser.parse(f.read())
             except (IOError, OSError):
                 scrape_error = 1
                 continue
-        for mname in runseries:
-            if not runseries[mname]['labels']:
-                continue
-            out[mname] = entry(
-                runseries[mname]['labels'],
-                runseries[mname]['type'],
-                runseries[mname]['help'],
-            )
+        for mname, mvalue in parser.dump().items():
+            out[mname] = mvalue
         out['node_textfile_mtime'] = entry(
             mtimes,
             'gauge',

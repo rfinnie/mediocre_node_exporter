@@ -21,6 +21,7 @@ However, the metric names, labels and values which *are* exported are meant to b
 * meminfo: `/proc/meminfo`-based metrics
 * netdev: Network interface metrics
 * stat: `/proc/stat`-based metrics
+* subprocess: Metrics retrieved by running executables in a specified directory (*mediocre_node_exporter extension*)
 * textfile: Metrics loaded from .prom files in a specified directory
 * time: Current time
 * uname: `uname` node information
