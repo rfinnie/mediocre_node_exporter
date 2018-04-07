@@ -20,6 +20,7 @@
 
 import sys
 import http.server
+import socketserver
 import socket
 import io
 import gzip
@@ -93,7 +94,11 @@ def parse_args(collectors):
     return parser.parse_args()
 
 
-class HTTPServerV6(http.server.HTTPServer):
+class HTTPServer(socketserver.ForkingMixIn, http.server.HTTPServer):
+    pass
+
+
+class HTTPServerV6(socketserver.ForkingMixIn, http.server.HTTPServer):
     address_family = socket.AF_INET6
 
 
@@ -173,7 +178,7 @@ def main():
     if server_addrinfo[0] == socket.AF_INET6:
         server_class = HTTPServerV6
     else:
-        server_class = http.server.HTTPServer
+        server_class = HTTPServer
     httpd = server_class(
         (server_addrinfo[-1][0], server_addrinfo[-1][1]),
         NodeExporterHandler
