@@ -25,4 +25,5 @@ However, the metric names, labels and values which *are* exported are meant to b
 * textfile: Metrics loaded from .prom files in a specified directory
 * time: Current time
 * uname: `uname` node information
+* version: Runtime/compiler version information (*mediocre_node_exporter extension*)
 * vmstat: `/proc/vmstat`-based metrics
