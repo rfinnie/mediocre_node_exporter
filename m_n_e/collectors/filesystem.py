@@ -29,7 +29,10 @@ class Collector(BaseCollector):
                 continue
             if self.re_ignored_fs_types.match(l[2]):
                 continue
-            vfs = os.statvfs(mount)
+            try:
+                vfs = os.statvfs(mount)
+            except PermissionError:
+                continue
             labels = {
                 'device': l[0],
                 'fstype': l[2],
