@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # mediocre_node_exporter - A minimal node_exporter reimplementation
-# Copyright (C) 2017 Ryan Finnie
+# Copyright (C) 2017-2019 Ryan Finnie
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -18,14 +18,17 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 # 02110-1301, USA.
 
-import sys
-import http.server
-import socketserver
-import socket
-import io
 import gzip
+import io
+import os
+import shlex
+import socket
+import sys
+import urllib
+
 from . import collectors
 
+COLLECTORS = None
 INDEX_PAGE_CONTENT = """<html>
 <head><title>Mediocre Node Exporter</title></head>
 <body>
@@ -34,16 +37,8 @@ INDEX_PAGE_CONTENT = """<html>
 </body>
 </html>"""
 
-NOTFOUND_PAGE_CONTENT = """<html>
-<head><title>404 Not Found</title></head>
-<body>
-<h1>Not Found</h1>
-<p>The requested URL was not found on this server.</p>
-</body>
-</html>"""
 
-
-def parse_args(collectors):
+def parse_args(argv, collectors):
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -59,11 +54,6 @@ def parse_args(collectors):
         '-web.telemetry-path', '--web.telemetry-path', type=str, default='/metrics',
         dest='telemetry_path',
         help='path under which to expose metrics',
-    )
-    parser.add_argument(
-        '-web.xff-trusted-relays', '--web.xff-trusted-relays', type=str, default='127.0.0.1,::1',
-        dest='xff_trusted_relays',
-        help='comma-separated relays trusted to set X-Forwarded-For',
     )
     parser.add_argument(
         '-dump', '--dump', action='store_true',
@@ -96,128 +86,118 @@ def parse_args(collectors):
         collector = collectors[collector_name]
         collector.parser_config(parser)
 
-    return parser.parse_args()
+    return parser.parse_args(argv[1:])
 
 
-class BaseHTTPServer(http.server.HTTPServer):
-    pass
+class ServerApplication():
+    environ = None
+    query_params = None
+    start_response = None
 
-
-class HTTPServer(socketserver.ForkingMixIn, BaseHTTPServer):
-    pass
-
-
-class HTTPServerV6(socketserver.ForkingMixIn, BaseHTTPServer):
-    address_family = socket.AF_INET6
-
-
-class NodeExporterHandler(http.server.BaseHTTPRequestHandler):
-    server_version = 'mediocre_node_exporter'
-    sys_version = ''
-
-    # HTTP/1.1 requires very specific handling.  In general, every response
-    # either needs Content-Length or Connection: close.  Exceptions are
-    # codes 1xx, 204, and 304.
-    protocol_version = 'HTTP/1.1'
-
-    Collectors = None
-
-    def log_request(self, code='-', size='-'):
-        """Log an accepted request."""
-        referer = '-'
-        ua = '-'
-        if 'referer' in self.headers:
-            referer = self.headers['referer']
-        if 'user-agent' in self.headers:
-            referer = self.headers['user-agent']
-
-        self.log_message('"%s" %s %s "%s" "%s"', self.requestline, str(code), str(size), str(referer), str(ua))
-
-    def process_xff(self):
-        if 'x-forwarded-for' not in self.headers:
-            return
-        xff_trusted_relays = self.Collectors.config.xff_trusted_relays.split(',')
-        remote_addr = self.client_address[0]
-        if remote_addr not in xff_trusted_relays:
-            return
-        xff_list = self.headers['x-forwarded-for'].split(', ')
-        xff_list.reverse()
-        for ip in xff_list:
-            if not ip:
-                continue
-            if ip in xff_trusted_relays:
-                continue
-            self.client_address = (ip, self.client_address[1])
-            break
-
-    def process_ipv6_normalize(self):
-        if self.server.address_family == socketserver.socket.AF_INET:
-            return
-        if self.client_address[0].startswith('::ffff:'):
-            self.client_address = (self.client_address[0][7:], self.client_address[1])
-
-    def do_GET(self):
-        self.process_ipv6_normalize()
-        self.process_xff()
-
-        if self.path == self.Collectors.config.telemetry_path:
-            content = {
-                'code': 200,
-                'output': self.Collectors.dump_metrics(),
-                'content_type': 'text/plain; version=0.0.4',
-            }
-        elif self.path == '/':
-            content = {
-                'code': 200,
-                'output': INDEX_PAGE_CONTENT.format(
-                    telemetry_path=self.Collectors.config.telemetry_path,
-                ),
-                'content_type': 'text/html; charset=utf-8',
-            }
-        else:
-            content = {
-                'code': 404,
-                'output': NOTFOUND_PAGE_CONTENT,
-                'content_type': 'text/html; charset=utf-8',
-            }
-
-        self.send_response(content['code'])
-        self.send_header('Content-Type', content['content_type'])
-        output = content['output']
-        if self.headers.get('Accept-Encoding') and ('gzip' in self.headers.get('Accept-Encoding')):
+    def process_response(self, output, headers):
+        if 'gzip' in self.environ.get('HTTP_ACCEPT_ENCODING', ''):
             zbuf = io.BytesIO()
             zfile = gzip.GzipFile(mode='wb', compresslevel=6, fileobj=zbuf)
             zfile.write(output.encode('UTF-8'))
             zfile.close()
             output = zbuf.getvalue()
-            self.send_header('Content-Encoding', 'gzip')
+            headers['Content-Encoding'] = 'gzip'
         else:
             output = output.encode('UTF-8')
-        self.send_header('Content-Length', str(len(output)))
-        self.end_headers()
-        self.wfile.write(output)
+        headers['Content-Length'] = str(len(output))
+        return output, list(headers.items())
+
+    def __call__(self, environ, start_response):
+        self.environ = environ
+        self.start_response = start_response
+        self.query_params = {}
+        if 'QUERY_STRING' in self.environ:
+            self.query_params = urllib.parse.parse_qs(self.environ['QUERY_STRING'])
+        if self.environ['REQUEST_METHOD'] == 'GET':
+            return self.do_GET()
+        else:
+            body, headers = self.process_response(
+                'Method Not Allowed',
+                {'Content-Type': 'text/plain; charset=utf-8'},
+            )
+            self.start_response('405 Method Not Allowed', headers)
+            return [body]
+
+    def do_GET(self):
+        if self.environ['PATH_INFO'] == COLLECTORS.config.telemetry_path:
+            body, headers = self.process_response(
+                COLLECTORS.dump_metrics(),
+                {'Content-Type': 'text/plain; version=0.0.4'},
+            )
+            self.start_response('200 OK', headers)
+            return [body]
+        elif self.environ['PATH_INFO'] == '/':
+            body, headers = self.process_response(
+                INDEX_PAGE_CONTENT.format.format(
+                    telemetry_path=COLLECTORS.config.telemetry_path,
+                ),
+                {'Content-Type': 'text/html; charset=utf-8'},
+            )
+            self.start_response('200 OK', headers)
+            return [body]
+        else:
+            body, headers = self.process_response(
+                'Not Found',
+                {'Content-Type': 'text/plain; charset=utf-8'},
+            )
+            self.start_response('404 Not Found', headers)
+            return [body]
 
 
-def main():
-    Collectors = collectors.Collectors()
-    config = parse_args(Collectors.collectors)
-    collectors_enabled = config.collectors_enabled.split(',')
-    Collectors.set_config(config)
-    Collectors.postinit()
-    all_collectors = sorted([x for x in Collectors.collectors.keys()])
-    if config.collectors_print:
+def load_config(argv=None):
+    global CONFIG
+    global COLLECTORS
+
+    cmdline = os.environ.get('MNE_CMDLINE')
+    if cmdline:
+        argv = [''] + shlex.split(cmdline)
+    if not argv:
+        argv = ['']
+
+    COLLECTORS = collectors.Collectors()
+    CONFIG = parse_args(argv, COLLECTORS.collectors)
+    collectors_enabled = CONFIG.collectors_enabled.split(',')
+    COLLECTORS.set_config(CONFIG)
+    COLLECTORS.postinit()
+    all_collectors = sorted([x for x in COLLECTORS.collectors.keys()])
+    if CONFIG.collectors_print:
         print('Available collectors:')
         for collector_name in all_collectors:
             print('- {}'.format(collector_name))
         return
     for collector in all_collectors:
         if collector not in collectors_enabled:
-            del(Collectors.collectors[collector])
-    if config.dump:
-        sys.stdout.write(Collectors.dump_metrics())
+            del(COLLECTORS.collectors[collector])
+
+
+def main():
+    global CONFIG
+    global COLLECTORS
+
+    load_config(sys.argv)
+
+    if CONFIG.dump:
+        sys.stdout.write(COLLECTORS.dump_metrics())
         return
-    server_port = int(config.listen_address.split(':')[-1])
-    server_host = ':'.join(config.listen_address.split(':')[:-1])
+
+    from wsgiref.simple_server import make_server, WSGIServer, WSGIRequestHandler
+
+    class WSGIServerV6(WSGIServer):
+        address_family = socket.AF_INET6
+
+    class RequestHandler(WSGIRequestHandler):
+        def address_string(self):
+            if (self.server.address_family == socket.AF_INET6) and self.client_address[0].startswith('::ffff:'):
+                return self.client_address[0][7:]
+            return self.client_address[0]
+
+    server_port = int(CONFIG.listen_address.split(':')[-1])
+    server_host = ':'.join(CONFIG.listen_address.split(':')[:-1])
     if server_host == '':
         test_addrinfo = socket.getaddrinfo(None, server_port)[0]
         if test_addrinfo[0] == socket.AF_INET6:
@@ -228,14 +208,12 @@ def main():
         server_host = server_host[1:-1]
     server_addrinfo = socket.getaddrinfo(server_host, server_port)[0]
     if server_addrinfo[0] == socket.AF_INET6:
-        server_class = HTTPServerV6
+        server_class = WSGIServerV6
     else:
-        server_class = HTTPServer
-    httpd = server_class(
-        (server_addrinfo[-1][0], server_addrinfo[-1][1]),
-        NodeExporterHandler
-    )
-    httpd.RequestHandlerClass.Collectors = Collectors
+        server_class = WSGIServer
+
+    handler = ServerApplication()
+    httpd = make_server(server_host, server_port, handler, server_class, RequestHandler)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
