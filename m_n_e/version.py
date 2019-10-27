@@ -13,14 +13,14 @@ try:
     GIT_BRANCH = subprocess.check_output(
         ['git', '-C', _scriptdir, 'rev-parse', '--abbrev-ref', 'HEAD']
     ).decode('UTF-8').rstrip()
-except subprocess.CalledProcessError:
+except (subprocess.CalledProcessError, FileNotFoundError):
     GIT_BRANCH = None
 
 try:
     GIT_REVISION = subprocess.check_output(
         ['git', '-C', _scriptdir, 'show', '-s', '--format=%H']
     ).decode('UTF-8').rstrip()
-except subprocess.CalledProcessError:
+except (subprocess.CalledProcessError, FileNotFoundError):
     GIT_REVISION = None
 
 PYTHON_VERSION = sys.version.replace('\r', ' ').replace('\n', ' ')
